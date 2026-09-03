@@ -1,0 +1,6 @@
+Reserved for content files (icons, sounds) the module loads at runtime through
+`Blish_HUD.Modules.Managers.ContentsManager`. Empty for now: `ShowAlert` in `Module.cs` passes
+`icon: null` to `ScreenNotification.ShowNotification`, so nothing needs to live here yet. Keep
+this file (or something else) here so `ref/` survives as a tracked directory; `BlishHUD.targets`
+only warns, not errors, when it is missing, but the `.bhm` packaging step still expects the
+directory to exist once real assets are added.

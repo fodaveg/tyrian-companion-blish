@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Targets .NET Framework 4.7.2, the same TFM the `BlishHUD` NuGet package itself declares
+    (verified against its 1.3.0 nuspec: <group targetFramework=".NETFramework4.7.2">), so the
+    compile-time reference and the module's own output are on the same framework the host loads.
+
+    SDK-style rather than the classic packages.config layout Blish HUD's own Module-Template
+    ships (github.com/blish-hud/Module-Template): PackageReference resolves the whole dependency
+    graph (Gw2Sharp, MonoGame.*, Newtonsoft.Json, ...) without this file having to hardcode a
+    HintPath and an assembly version per transitive package by hand. blishhud.com's own "Setup
+    From Scratch" guide describes `Install-Package BlishHUD`, which in current Visual Studio
+    defaults to PackageReference for exactly this reason.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <RootNamespace>TyrianCompanion.BlishBridge</RootNamespace>
+    <AssemblyName>TyrianCompanionBlishBridge</AssemblyName>
+    <LangVersion>7.3</LangVersion>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      ExcludeAssets="runtime": compile against Blish HUD's public API without copying
+      "Blish HUD.exe" (or its own transitive dependencies) into this module's output directory.
+      The host process already has all of it loaded; shipping a second copy would be dead
+      weight in the .bhm at best and, for "Blish HUD.exe" itself, a real hazard if a bundled
+      copy's version ever drifted from the host's — Module, ScreenNotification and SettingEntry
+      are host types this module runs against in-process, not across a serialization boundary.
+
+      blishhud.com/docs, "Setup From Scratch": "Set Copy Local to False for the Blish HUD
+      reference and all of its dependencies in the reference properties... Blish HUD already has
+      these assemblies loaded, so you do not need to ship them." ExcludeAssets="runtime" is the
+      PackageReference-era equivalent of that Copy Local = False.
+
+      Restoring this pulls in `build/BlishHUD.targets` from the package too (verified inside the
+      1.3.0 .nupkg), which is what packages this project's output into a .bhm automatically after
+      every build — see the "BuildBlishHUDModule" target it defines. No custom build step here
+      does that zipping by hand.
+    -->
+    <PackageReference Include="BlishHUD" Version="1.3.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The only other thing this module needs beyond Blish HUD's own API: DataContractJsonSerializer
+      for the wire messages (AlertWireMessages.cs). It ships in the .NET Framework GAC, so it is a
+      plain framework Reference, not a NuGet package — nothing else to exclude from the output.
+    -->
+    <Reference Include="System.Runtime.Serialization" />
+    <!-- MEF: the [Export]/[ImportingConstructor] pair Module.cs uses, exactly like Blish HUD's own
+         Module-Template, which the module host's composition container relies on to find and
+         construct this module. -->
+    <Reference Include="System.ComponentModel.Composition" />
+  </ItemGroup>
+
+  <!--
+    No explicit <None Include> for manifest.json or ref\ here on purpose: the Microsoft.NET.Sdk
+    default item globs already pick up every file under the project directory as a `None` item
+    (harmless — it just makes them visible in an IDE), and `BlishHUD.targets`' own
+    CheckBlishHUDModuleRequiredFiles/BuildBlishHUDModule targets never look at MSBuild items for
+    either path anyway; they read `$(ProjectDir)manifest.json` and `$(ProjectDir)ref\**` straight
+    off disk. Adding an explicit <None Include> for a file the default glob already covers is a
+    documented SDK-style pitfall (NETSDK1022, "duplicate 'None' items") for no benefit here.
+  -->
+
+</Project>

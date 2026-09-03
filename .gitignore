@@ -1,0 +1,14 @@
+# Build output. This repo ships source only; a compiled module is a release artifact, not a commit.
+bin/
+obj/
+
+# Anything a build produces at the project root: the compiled assembly, the packaged module, and
+# debug symbols for it.
+*.dll
+*.bhm
+*.pdb
+
+# Editor/IDE clutter.
+.vs/
+*.user
+*.suo
