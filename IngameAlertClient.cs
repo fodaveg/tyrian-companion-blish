@@ -92,6 +92,12 @@ namespace TyrianCompanion.BlishBridge {
                             await tcpClient.ConnectAsync(LoopbackHost, port).ConfigureAwait(false);
                             _logger.Debug("Connected to the Tyrian Companion plugin on {0}:{1}.", LoopbackHost, port);
 
+                            // The plugin restarts its own `seq` counter at 1 every time Obsidian
+                            // relaunches, so the dedupe window has to start over on every new
+                            // connection too — otherwise a plugin restart would leave every alert
+                            // below this connection's old high-water mark discarded in silence.
+                            _lastSeq = null;
+
                             await SendHelloAsync(tcpClient, token).ConfigureAwait(false);
 
                             // A completed connect (hello accepted, at least one byte or an orderly
@@ -262,9 +268,10 @@ namespace TyrianCompanion.BlishBridge {
             if (string.IsNullOrEmpty(message.Kind) || string.IsNullOrEmpty(message.Content)) return;
 
             if (message.Seq.HasValue) {
-                // Reconnect dedupe: `seq` is a per-process counter on the plugin's side, so a
-                // sequence number at or below the last one this connection already showed is a
-                // repeat, not a new alert.
+                // Reconnect dedupe: `seq` is a per-process counter on the plugin's side, reset to
+                // null at the top of every new connection in `RunAsync`, so a sequence number at
+                // or below the last one *this connection* already showed is a repeat within it,
+                // not a new alert. It never spans a reconnection.
                 if (_lastSeq.HasValue && message.Seq.Value <= _lastSeq.Value) return;
                 _lastSeq = message.Seq;
             }
