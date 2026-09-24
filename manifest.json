@@ -1,11 +1,11 @@
 {
     "name": "Tyrian Companion Bridge",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "namespace": "fodaveg.tyriancompanion.blishbridge",
     "package": "TyrianCompanionBlishBridge.dll",
     "manifest_version": 1,
 
-    "description": "Mirrors the loot and price alerts from the Tyrian Companion Obsidian plugin onto a Guild Wars 2 screen notification. One-way loopback TCP client: connects to the plugin, sends a single hello line, and only ever reads after that. Does not call the GW2 API, does not read Mumble Link, does not automate anything in the game.",
+    "description": "Mirrors the loot and price alerts from the Tyrian Companion Obsidian plugin onto a Guild Wars 2 screen notification, and reports your map/character/game-state back to it so it can mark a play session. Bidirectional, authenticated loopback TCP client (protocol v2): paste the plugin's token into this module's settings. Does not call the GW2 API, does not read Mumble Link beyond map/character/gameplay state, does not automate anything in the game.",
 
     "dependencies": {
         "bh.blishhud": ">=1.0.0"

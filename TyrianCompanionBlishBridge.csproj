@@ -45,16 +45,25 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!--
-      The only other thing this module needs beyond Blish HUD's own API: DataContractJsonSerializer
-      for the wire messages (AlertWireMessages.cs). It ships in the .NET Framework GAC, so it is a
-      plain framework Reference, not a NuGet package — nothing else to exclude from the output.
-    -->
-    <Reference Include="System.Runtime.Serialization" />
     <!-- MEF: the [Export]/[ImportingConstructor] pair Module.cs uses, exactly like Blish HUD's own
          Module-Template, which the module host's composition container relies on to find and
          construct this module. -->
     <Reference Include="System.ComponentModel.Composition" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      `tests/ProtocolConsoleTests/` is its own net8.0 console project (see its own .csproj for
+      why), not part of this module. Without this, the SDK's default recursive glob for `**/*.cs`
+      would also pull in that project's own `obj/**/*.cs` (its generated AssemblyInfo.cs and
+      TargetFrameworkAttribute file) as *this* project's compile items — a duplicate-attribute
+      build error only shows up once that nested project has been built at least once, which is
+      exactly the kind of pitfall this repo's other comments about default item globs (above)
+      already warn about for `None`.
+    -->
+    <Compile Remove="tests/**" />
+    <None Remove="tests/**" />
+    <EmbeddedResource Remove="tests/**" />
   </ItemGroup>
 
   <!--
