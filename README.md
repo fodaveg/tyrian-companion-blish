@@ -19,6 +19,11 @@ report game context so the plugin can mark sessions automatically — which make
 bidirectional, and therefore authenticated. **0.1.0 cannot talk to a plugin running protocol v2**;
 this module has to be updated too.
 
+Version 0.2.1 refuses a Guild Wars 2 API key in the token field, and anything else outside the
+token's format, with a notification that says where to copy the right value; an API key saved by
+0.2.0 is cleared on load and never sent. Without a usable token the module does not connect and
+says so once. After a rejected token the notification says what to do.
+
 ### Pasting the token
 
 1. In Obsidian, open the Tyrian Companion plugin's settings and find the "Token del addon" row.
@@ -27,7 +32,12 @@ this module has to be updated too.
 2. In Blish HUD, open this module's own settings and paste it into the **Plugin token** field.
 3. Both sides now share the secret. If you ever rotate it in Obsidian (same button, after clearing
    the old entry), paste the new value here too — the old one stops working immediately, and this
-   module shows "token rejected" until you do.
+   module shows "the plugin rejected the token", with these steps, until you do.
+
+Spaces and newlines around the pasted value are trimmed. The field refuses, with a notification,
+your Guild Wars 2 API key (`XXXXXXXX-XXXX-…`, 72 characters), which is not the token and is never
+kept or sent, and anything that is not 32 to 128 characters without spaces, which leaves the
+previous token in place.
 
 The token is never written to this module's log, and this module never reads it back once you've
 pasted it anywhere but into memory for the next `hello`.
@@ -56,7 +66,8 @@ pasted it anywhere but into memory for the next `hello`.
 - Reconnects forever on a saturated backoff (`250, 500, 1000, 2000, 5000` ms), silently: no server
   listening yet is the expected state if Blish HUD starts before Obsidian does. An `auth_rejected`
   or `version_unsupported` error is the one case that does **not** retry until you change a setting
-  (the token, most likely) — this module shows a notification once and waits.
+  (the token, most likely) — this module shows a notification once and waits. Without a usable
+  token it does not connect at all, and says so once.
 - Paints the `content` string each alert line carries verbatim, through
   `ScreenNotification.ShowNotification`. It does not recompose the message from the other fields
   the wire line carries (`name`, `quantity`, `totalCopper`); `kind` only picks a notification color.
@@ -89,13 +100,15 @@ The `.bhm` lands next to the compiled DLL in `bin/Release/` (the project sets
 ### Tests
 
 `tests/ProtocolConsoleTests/` is a small `net8.0` console project that links this repo's
-`FlatJsonLine.cs` and `IngameBridgeProtocol.cs` directly (`<Compile Include>`, no project reference)
-— those two files have no dependency on Blish HUD or any NuGet package, on purpose, so the wire
+`FlatJsonLine.cs`, `IngameBridgeProtocol.cs` and `TokenGuard.cs` directly (`<Compile Include>`, no
+project reference) — those files have no dependency on Blish HUD or any NuGet package, on purpose, so the wire
 contract can be exercised without pulling in the game-engine dependencies (`MonoGame`, `Gw2Sharp`,
 …) the module itself needs. It encodes one line of each addon-to-plugin message type and diffs it
 byte-for-byte against the example trace in `docs/SPEC-puente-ingame.md`, then round-trips a handful
 of plugin-to-addon lines (a well-formed `welcome`/`alert`/`error`, one with an extra key, one with a
-newer `v`) through the decoder. Run it with:
+newer `v`) through the decoder. It also checks what the token field may hold: an API key refused,
+cleared on load and never encoded in a `hello`, a 43-character token accepted, whitespace trimmed,
+too short or too long refused. Run it with:
 
 ```
 dotnet run --project tests/ProtocolConsoleTests
@@ -161,6 +174,8 @@ Verified on this tree (compiled, protocol round-tripped by `tests/ProtocolConsol
 - The v2 wire contract itself: `hello`/`context`/`heartbeat`/`bye` encode to the exact bytes the
   spec's own example trace shows, and the decoder accepts a well-formed `welcome`/`alert`/`error`
   while tolerating an unknown `type`, a known `type` with an extra or missing key, and a newer `v`.
+- The token rules in `TokenGuard.cs` (above). Not verified: how Blish HUD's settings view applies
+  `SetValidation` to a string setting; `Module.OnTokenChanged` corrects the value either way.
 - The project builds in Release and packages a `.bhm` whose `manifest.json` and DLL match this
   commit (see the delivering agent's report for the exact build log and checksum).
 

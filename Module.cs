@@ -40,7 +40,7 @@ namespace TyrianCompanion.BlishBridge {
         /// own logs; the plugin does not parse it beyond the character-class check every
         /// `clientVersion` gets. Bump this together with `manifest.json`'s `version` on a release.
         /// </summary>
-        private const string ClientVersion = "0.2.0";
+        private const string ClientVersion = "0.2.1";
 
         private SettingEntry<bool> _enabledSetting;
         private SettingEntry<int> _portSetting;
