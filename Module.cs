@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.Composition;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,6 +49,13 @@ namespace TyrianCompanion.BlishBridge {
         private IngameBridgeClient _client;
         private CancellationTokenSource _lifecycleCts;
 
+        /// <summary>Set while <see cref="OnTokenChanged"/> writes its own correction back to the setting.</summary>
+        private bool _correctingToken;
+
+        private static readonly TimeSpan TokenNoticeRepeatWindow = TimeSpan.FromSeconds(5);
+        private string _lastTokenNotice;
+        private DateTime _lastTokenNoticeAtUtc;
+
         [ImportingConstructor]
         public TyrianCompanionBridgeModule([Import("ModuleParameters")] ModuleParameters moduleParameters)
             : base(moduleParameters) { }
@@ -69,7 +77,13 @@ namespace TyrianCompanion.BlishBridge {
                 "alertBridgeToken",
                 "",
                 () => "Plugin token",
-                () => "Paste the token from the plugin's settings in Obsidian (row \"Token del addon\", button \"Copiar token\"). Required: without a matching token the plugin rejects this module's connection. Never logged by this module.");
+                () => "Paste the token from the plugin's settings in Obsidian (row \"Token del addon\", button \"Copiar token\"). Required: without a matching token the plugin rejects this module's connection. Not your Guild Wars 2 API key, which this module refuses. Never logged by this module.");
+
+            // First barrier: Blish HUD's own settings view refuses the value. `InvalidMessage` is
+            // not displayed by Blish HUD 1.3.0 ("[NOT IMPLEMENTED]" in its docs), so the reason goes
+            // out as a notification from here. `OnTokenChanged` is the second barrier, in case a
+            // value reaches the setting anyway.
+            _tokenSetting.SetValidation(ValidateToken);
         }
 
         protected override void Initialize() {
@@ -85,11 +99,22 @@ namespace TyrianCompanion.BlishBridge {
                 Logger,
                 ClientVersion);
 
+            // 0.2.0 kept a Guild Wars 2 API key pasted into the token field. Cleared before the
+            // client starts and before `OnTokenChanged` is subscribed, so it is never sent and this
+            // correction does not run through the change handler.
+            var keptToken = TokenGuard.ScrubStored(_tokenSetting.Value, out var discardedApiKey);
+            if (discardedApiKey) {
+                _tokenSetting.Value = keptToken;
+                Logger.Warn("The saved plugin token was a Guild Wars 2 API key; removed it from this module's settings.");
+                _client.SuppressMissingTokenWarning();
+                ShowAlert(TokenGuard.DiscardedApiKeyMessage, ScreenNotification.NotificationType.Error);
+            }
+
             _lifecycleCts = new CancellationTokenSource();
 
             _enabledSetting.SettingChanged += OnSettingChanged;
             _portSetting.SettingChanged += OnSettingChanged;
-            _tokenSetting.SettingChanged += OnSettingChanged;
+            _tokenSetting.SettingChanged += OnTokenChanged;
             GameService.GameIntegration.Gw2Instance.Gw2Closed += OnGw2Closed;
 
             // Fire-and-forget on purpose: the connect/retry loop is meant to run for the module's
@@ -113,7 +138,7 @@ namespace TyrianCompanion.BlishBridge {
         protected override void Unload() {
             _enabledSetting.SettingChanged -= OnSettingChanged;
             _portSetting.SettingChanged -= OnSettingChanged;
-            _tokenSetting.SettingChanged -= OnSettingChanged;
+            _tokenSetting.SettingChanged -= OnTokenChanged;
             GameService.GameIntegration.Gw2Instance.Gw2Closed -= OnGw2Closed;
 
             // Best-effort `bye reason:"addon_unload"` before the socket goes away underneath it;
@@ -134,7 +159,56 @@ namespace TyrianCompanion.BlishBridge {
 
         private void OnSettingChanged(object sender, ValueChangedEventArgs<int> e) => _client?.WakeUp();
 
-        private void OnSettingChanged(object sender, ValueChangedEventArgs<string> e) => _client?.WakeUp();
+        /// <summary>
+        /// Second barrier behind <see cref="ValidateToken"/>: whatever reached the setting is put
+        /// right before the client sees it. An API key is cleared, a malformed value is replaced by the
+        /// previous one as if it had not been saved, and a usable one loses the whitespace around
+        /// it. Setting the value from here raises this event again; <see cref="_correctingToken"/>
+        /// keeps that from looping. Only the verdict is logged, never the value.
+        /// </summary>
+        private void OnTokenChanged(object sender, ValueChangedEventArgs<string> e) {
+            if (_correctingToken) return;
+            var verdict = TokenGuard.Correct(e.NewValue, e.PreviousValue, out var replacement);
+            if (replacement != e.NewValue) {
+                _correctingToken = true;
+                try {
+                    _tokenSetting.Value = replacement;
+                } finally {
+                    _correctingToken = false;
+                }
+            }
+            var message = TokenGuard.MessageFor(verdict);
+            if (message != null) {
+                Logger.Warn("Refused the value saved as the plugin token ({0}); it was not kept.", verdict);
+                NotifyTokenRefused(message);
+            }
+            _client?.WakeUp();
+        }
+
+        /// <summary>
+        /// The validation Blish HUD's settings view runs on a value typed or pasted into the token
+        /// field. Empty (clearing the token) and usable values pass; the rest are refused, and the
+        /// reason is shown as a notification because Blish HUD does not display `InvalidMessage`.
+        /// </summary>
+        private SettingValidationResult ValidateToken(string value) {
+            var verdict = TokenGuard.Check(value, out _);
+            var message = TokenGuard.MessageFor(verdict);
+            if (message == null) return new SettingValidationResult(true);
+            NotifyTokenRefused(message);
+            return new SettingValidationResult(false, message);
+        }
+
+        /// <summary>
+        /// Shows why a token was refused, once per refusal: both barriers can fire for the same value,
+        /// so the same message within a few seconds is not repeated.
+        /// </summary>
+        private void NotifyTokenRefused(string message) {
+            var now = DateTime.UtcNow;
+            if (message == _lastTokenNotice && now - _lastTokenNoticeAtUtc < TokenNoticeRepeatWindow) return;
+            _lastTokenNotice = message;
+            _lastTokenNoticeAtUtc = now;
+            ShowAlert(message, ScreenNotification.NotificationType.Error);
+        }
 
         /// <summary>
         /// `GameService.GameIntegration.Gw2Instance.Gw2Closed`: "the Guild Wars 2 process has

@@ -47,8 +47,15 @@ namespace TyrianCompanion.BlishBridge {
         /// `client`, `clientVersion`, `instance` and `token` exactly, in that order after `v`/`type`
         /// — order does not matter to the plugin's parser, but a fixed order makes this line
         /// reproducible for the console tests that diff it against the spec's own example.
+        ///
+        /// A token with the shape of a Guild Wars 2 API key throws instead of being encoded: the
+        /// settings side already refuses one (<see cref="TokenGuard"/>), and this is the last place it
+        /// could still leave. The exception message does not carry the value.
         /// </summary>
         public static byte[] EncodeHello(string clientVersion, string instance, string token) {
+            if (TokenGuard.IsGw2ApiKey((token ?? string.Empty).Trim())) {
+                throw new InvalidOperationException("Refusing to send a Guild Wars 2 API key as the bridge token.");
+            }
             return EncodeLine(new[] {
                 new KeyValuePair<string, object>("v", (long)Version),
                 new KeyValuePair<string, object>("type", "hello"),

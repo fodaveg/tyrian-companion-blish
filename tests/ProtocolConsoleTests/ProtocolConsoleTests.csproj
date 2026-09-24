@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    net8.0, not net472: this project only exercises the wire contract, and `FlatJsonLine.cs` /
-    `IngameBridgeProtocol.cs` have no dependency on Blish HUD or any NuGet package (by design —
+    net8.0, not net472: this project only exercises the wire contract and the token guard, and
+    `FlatJsonLine.cs` / `IngameBridgeProtocol.cs` / `TokenGuard.cs` have no dependency on Blish HUD or any NuGet package (by design —
     see their own header comments), so there is nothing here that needs the module's own
     net472/MonoGame/Gw2Sharp dependency graph. Linked, not project-referenced: a project reference
     to `../../TyrianCompanionBlishBridge.csproj` would pull that whole graph back in through
@@ -19,6 +19,7 @@
   <ItemGroup>
     <Compile Include="../../FlatJsonLine.cs" Link="FlatJsonLine.cs" />
     <Compile Include="../../IngameBridgeProtocol.cs" Link="IngameBridgeProtocol.cs" />
+    <Compile Include="../../TokenGuard.cs" Link="TokenGuard.cs" />
   </ItemGroup>
 
 </Project>

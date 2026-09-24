@@ -65,6 +65,7 @@ namespace TyrianCompanion.BlishBridge {
         private volatile string _pauseReasonCode;
         private bool _pauseWarningShown;
         private bool _outdatedWarningShown;
+        private bool _missingTokenWarningShown;
 
         public IngameBridgeClient(
             Func<bool> enabledProvider,
@@ -96,6 +97,16 @@ namespace TyrianCompanion.BlishBridge {
                         continue;
                     }
 
+                    // Checked here, once, and handed to the `hello` as is: empty, an API key or a
+                    // malformed value means "no token", and the plugin would reject every `hello`
+                    // without one anyway, so there is nothing to connect for.
+                    var helloToken = TokenGuard.UsableOrNull(_tokenProvider());
+                    if (helloToken == null) {
+                        WarnMissingTokenOnce();
+                        await WaitAsync(DisabledPollIntervalMs, token).ConfigureAwait(false);
+                        continue;
+                    }
+
                     var port = _portProvider();
 
                     try {
@@ -107,7 +118,7 @@ namespace TyrianCompanion.BlishBridge {
 
                             attempt = 0;
 
-                            await DriveConnectionAsync(tcpClient, token).ConfigureAwait(false);
+                            await DriveConnectionAsync(tcpClient, helloToken, token).ConfigureAwait(false);
                         }
                     } catch (Exception ex) when (!token.IsCancellationRequested) {
                         // A SocketException because nothing is listening yet is the expected
@@ -142,6 +153,7 @@ namespace TyrianCompanion.BlishBridge {
             if (_disposed) return;
             _pauseReasonCode = null;
             _pauseWarningShown = false;
+            _missingTokenWarningShown = false;
             try {
                 if (_wake.CurrentCount == 0) _wake.Release();
             } catch (ObjectDisposedException) {
@@ -206,14 +218,14 @@ namespace TyrianCompanion.BlishBridge {
         /// Returns (or throws, same as v1) when the plugin closes the socket; the caller's own
         /// try/catch and backoff handle reconnecting.
         /// </summary>
-        private async Task DriveConnectionAsync(TcpClient tcpClient, CancellationToken token) {
+        private async Task DriveConnectionAsync(TcpClient tcpClient, string helloToken, CancellationToken token) {
             var stream = tcpClient.GetStream();
             var connection = new ConnectionState();
             lock (_syncLock) { _activeConnection = connection; }
 
             await connection.WriteGate.WaitAsync(token).ConfigureAwait(false);
             try {
-                var hello = IngameBridgeProtocol.EncodeHello(_clientVersion, _instanceId, _tokenProvider() ?? string.Empty);
+                var hello = IngameBridgeProtocol.EncodeHello(_clientVersion, _instanceId, helloToken);
                 await stream.WriteAsync(hello, 0, hello.Length, token).ConfigureAwait(false);
                 connection.LastSentAtUtc = DateTime.UtcNow;
             } finally {
@@ -348,7 +360,7 @@ namespace TyrianCompanion.BlishBridge {
             _logger.Warn("The in-game bridge closed the connection with error code {0}.", code);
             switch (code) {
                 case "auth_rejected":
-                    SetPause(code, "Tyrian Companion: token rejected. Copy it again from the plugin's settings in Obsidian.");
+                    SetPause(code, TokenGuard.RejectedMessage);
                     break;
                 case "version_unsupported":
                     SetPause(code, "Tyrian Companion: update this Blish HUD module to talk to the plugin.");
@@ -368,6 +380,20 @@ namespace TyrianCompanion.BlishBridge {
             if (_pauseWarningShown) return;
             _pauseWarningShown = true;
             _onAlert(message, ScreenNotification.NotificationType.Error);
+        }
+
+        /// <summary>
+        /// For the module's load, when it has just told the player that a saved API key was removed:
+        /// the "no token yet" notice would only repeat that. The next settings change re-arms it.
+        /// </summary>
+        public void SuppressMissingTokenWarning() => _missingTokenWarningShown = true;
+
+        /// <summary>Once until the settings change: <see cref="WakeUp"/> re-arms it, so a cleared token is announced again.</summary>
+        private void WarnMissingTokenOnce() {
+            if (_missingTokenWarningShown) return;
+            _missingTokenWarningShown = true;
+            _logger.Info("No usable token in this module's settings; not connecting to the Tyrian Companion plugin.");
+            _onAlert(TokenGuard.MissingMessage, ScreenNotification.NotificationType.Warning);
         }
 
         private void WarnOutdatedOnce() {
