@@ -273,8 +273,23 @@ namespace TyrianCompanion.BlishBridge {
                 }
 
                 if (connection.Authenticated) {
+                    // The acks go first, in the order they were queued, so their `seq` stays in step
+                    // with whatever context or heartbeat follows.
+                    await SendPendingAlertAcksAsync(stream, connection, token).ConfigureAwait(false);
                     await SendContextOrHeartbeatIfDueAsync(stream, connection, token).ConfigureAwait(false);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Sends one `alert_ack` per alert this connection has shown since the last call. The queue
+        /// only ever gets an alert that passed the `(server, seq)` dedupe, so a duplicate is never
+        /// confirmed a second time.
+        /// </summary>
+        private static async Task SendPendingAlertAcksAsync(NetworkStream stream, ConnectionState connection, CancellationToken token) {
+            while (connection.PendingAlertAcks.Count > 0) {
+                var alertSeq = connection.PendingAlertAcks.Dequeue();
+                await WriteSequencedLineAsync(stream, connection, seq => IngameBridgeProtocol.EncodeAlertAck(connection.Nonce, seq, alertSeq), token).ConfigureAwait(false);
             }
         }
 
@@ -344,9 +359,13 @@ namespace TyrianCompanion.BlishBridge {
                     if (parsed.AlertSeq <= _lastSeenAlertSeq) return; // already shown, from this same plugin run
                     _lastSeenAlertSeq = parsed.AlertSeq;
                     _onAlert(parsed.AlertContent, NotificationTypeFor(parsed.AlertKind));
+                    // Confirm it to the plugin once shown (`_onAlert` hands the notification to the
+                    // main thread; the ack does not wait for that frame). Only an authenticated
+                    // connection has a nonce and a `seq` to send it with.
+                    if (connection.Authenticated) connection.PendingAlertAcks.Enqueue(parsed.AlertSeq);
                     return;
                 case IngameBridgeProtocol.IncomingKind.Error:
-                    HandleError(parsed.ErrorCode);
+                    HandleError(parsed.ErrorCode, parsed.Version);
                     return;
                 case IngameBridgeProtocol.IncomingKind.ProtocolNewer:
                     WarnOutdatedOnce();
@@ -356,14 +375,14 @@ namespace TyrianCompanion.BlishBridge {
             }
         }
 
-        private void HandleError(string code) {
+        private void HandleError(string code, int pluginVersion) {
             _logger.Warn("The in-game bridge closed the connection with error code {0}.", code);
             switch (code) {
                 case "auth_rejected":
                     SetPause(code, TokenGuard.RejectedMessage);
                     break;
                 case "version_unsupported":
-                    SetPause(code, "Tyrian Companion: update this Blish HUD module to talk to the plugin.");
+                    SetPause(code, IngameBridgeProtocol.VersionUnsupportedMessage(pluginVersion));
                     break;
                 default:
                     // hello_timeout, liveness_timeout, capacity, frame_length, frame_utf8,
@@ -437,6 +456,9 @@ namespace TyrianCompanion.BlishBridge {
             public int HeartbeatIntervalMs = IngameBridgeProtocol.DefaultHeartbeatIntervalMs;
             public DateTime LastSentAtUtc = DateTime.UtcNow;
             public IngameGameContext? LastSentContext;
+
+            /// <summary>`seq` of every alert shown and not yet confirmed. Touched only by the read loop.</summary>
+            public readonly Queue<long> PendingAlertAcks = new Queue<long>();
 
             private long _outboundSeq;
 

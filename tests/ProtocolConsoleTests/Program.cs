@@ -5,7 +5,7 @@ using TyrianCompanion.BlishBridge;
 namespace TyrianCompanion.BlishBridge.Tests {
 
     /// <summary>
-    /// Exercises the v2 wire contract from `docs/SPEC-puente-ingame.md` without a Blish HUD host:
+    /// Exercises the v3 wire contract from `docs/SPEC-puente-ingame.md` without a Blish HUD host:
     /// encodes one line of each addon-to-plugin message type and diffs it byte-for-byte against
     /// the spec's own "Ejemplo completo" trace, then round-trips a handful of plugin-to-addon
     /// lines through the decoder — a well-formed one of each type, and the tolerance cases the
@@ -28,6 +28,9 @@ namespace TyrianCompanion.BlishBridge.Tests {
             IgnoresAKnownTypeWithAMissingKey();
             IgnoresAnUnknownType();
             FlagsANewerProtocolVersion();
+            EncodesAnAlertAckWithTheConsecutiveSeq();
+            ReadsThePluginsLinesAtV2AndV3();
+            TellsAnOldPluginFromAnOldAddon();
             RejectsADuplicateTopLevelKey();
             InstanceIdIsCanonicalBase64Url();
 
@@ -58,34 +61,34 @@ namespace TyrianCompanion.BlishBridge.Tests {
             Check(
                 "hello line matches the spec's example",
                 Utf8Line(IngameBridgeProtocol.EncodeHello("0.2.0", "q8Hq3n2t0dQyYf0nJ1p0Aw", "<token>")),
-                "{\"v\":2,\"type\":\"hello\",\"client\":\"blish\",\"clientVersion\":\"0.2.0\",\"instance\":\"q8Hq3n2t0dQyYf0nJ1p0Aw\",\"token\":\"<token>\"}\n");
+                "{\"v\":3,\"type\":\"hello\",\"client\":\"blish\",\"clientVersion\":\"0.2.0\",\"instance\":\"q8Hq3n2t0dQyYf0nJ1p0Aw\",\"token\":\"<token>\"}\n");
 
             const string nonce = "Zk3m1Qw9Lr0aT7yUc2Vb5g";
 
             Check(
                 "context line (character_select) matches the spec's example",
                 Utf8Line(IngameBridgeProtocol.EncodeContext(nonce, 0, new IngameGameContext("character_select", null, null))),
-                "{\"v\":2,\"type\":\"context\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":0,\"state\":\"character_select\",\"mapId\":null,\"character\":null}\n");
+                "{\"v\":3,\"type\":\"context\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":0,\"state\":\"character_select\",\"mapId\":null,\"character\":null}\n");
 
             Check(
                 "context line (loading) matches the spec's example",
                 Utf8Line(IngameBridgeProtocol.EncodeContext(nonce, 1, new IngameGameContext("loading", 50, "Astra Uno"))),
-                "{\"v\":2,\"type\":\"context\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":1,\"state\":\"loading\",\"mapId\":50,\"character\":\"Astra Uno\"}\n");
+                "{\"v\":3,\"type\":\"context\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":1,\"state\":\"loading\",\"mapId\":50,\"character\":\"Astra Uno\"}\n");
 
             Check(
                 "context line (gameplay, Labyrinth map) matches the spec's example",
                 Utf8Line(IngameBridgeProtocol.EncodeContext(nonce, 4, new IngameGameContext("gameplay", 866, "Astra Uno"))),
-                "{\"v\":2,\"type\":\"context\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":4,\"state\":\"gameplay\",\"mapId\":866,\"character\":\"Astra Uno\"}\n");
+                "{\"v\":3,\"type\":\"context\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":4,\"state\":\"gameplay\",\"mapId\":866,\"character\":\"Astra Uno\"}\n");
 
             Check(
                 "heartbeat line matches the spec's example",
                 Utf8Line(IngameBridgeProtocol.EncodeHeartbeat(nonce, 3)),
-                "{\"v\":2,\"type\":\"heartbeat\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":3}\n");
+                "{\"v\":3,\"type\":\"heartbeat\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":3}\n");
 
             Check(
                 "bye line matches the spec's example",
                 Utf8Line(IngameBridgeProtocol.EncodeBye(nonce, 5, "game_exit")),
-                "{\"v\":2,\"type\":\"bye\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":5,\"reason\":\"game_exit\"}\n");
+                "{\"v\":3,\"type\":\"bye\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":5,\"reason\":\"game_exit\"}\n");
         }
 
         private static void DecodesAWellFormedWelcome() {
@@ -132,9 +135,44 @@ namespace TyrianCompanion.BlishBridge.Tests {
         }
 
         private static void FlagsANewerProtocolVersion() {
-            var line = "{\"v\":3,\"type\":\"welcome\",\"server\":\"s\",\"nonce\":\"n\",\"heartbeatIntervalMs\":5000}";
+            var line = "{\"v\":4,\"type\":\"welcome\",\"server\":\"s\",\"nonce\":\"n\",\"heartbeatIntervalMs\":5000}";
             var parsed = IngameBridgeProtocol.ParseIncomingLine(Utf8Bytes(line));
-            Check("v greater than 2 flags ProtocolNewer, regardless of type", parsed.Kind, IngameBridgeProtocol.IncomingKind.ProtocolNewer);
+            Check("v greater than 3 flags ProtocolNewer, regardless of type", parsed.Kind, IngameBridgeProtocol.IncomingKind.ProtocolNewer);
+        }
+
+        private static void EncodesAnAlertAckWithTheConsecutiveSeq() {
+            const string nonce = "Zk3m1Qw9Lr0aT7yUc2Vb5g";
+            Check(
+                "alert_ack line is exactly the v3 design",
+                Utf8Line(IngameBridgeProtocol.EncodeAlertAck(nonce, 7, 17)),
+                "{\"v\":3,\"type\":\"alert_ack\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":7,\"alertSeq\":17}\n");
+            // The ack shares the counter with context/heartbeat/bye: whatever comes next takes seq + 1.
+            Check(
+                "a heartbeat after the ack takes the next seq",
+                Utf8Line(IngameBridgeProtocol.EncodeHeartbeat(nonce, 8)),
+                "{\"v\":3,\"type\":\"heartbeat\",\"nonce\":\"Zk3m1Qw9Lr0aT7yUc2Vb5g\",\"seq\":8}\n");
+        }
+
+        private static void ReadsThePluginsLinesAtV2AndV3() {
+            foreach (var v in new[] { 2, 3 }) {
+                var welcome = "{\"v\":" + v + ",\"type\":\"welcome\",\"server\":\"s\",\"nonce\":\"n\",\"heartbeatIntervalMs\":5000}";
+                var parsedWelcome = IngameBridgeProtocol.ParseIncomingLine(Utf8Bytes(welcome));
+                Check($"a v{v} welcome is accepted", parsedWelcome.Kind, IngameBridgeProtocol.IncomingKind.Welcome);
+                var alert = "{\"v\":" + v + ",\"type\":\"alert\",\"seq\":1,\"kind\":\"valuable_loot\",\"name\":\"X\",\"quantity\":1,\"totalCopper\":null,\"content\":\"X\"}";
+                var parsedAlert = IngameBridgeProtocol.ParseIncomingLine(Utf8Bytes(alert));
+                Check($"a v{v} alert is accepted", parsedAlert.Kind, IngameBridgeProtocol.IncomingKind.Alert);
+            }
+            var v1 = "{\"v\":1,\"type\":\"welcome\",\"server\":\"s\",\"nonce\":\"n\",\"heartbeatIntervalMs\":5000}";
+            Check("a v1 line is still dropped", IngameBridgeProtocol.ParseIncomingLine(Utf8Bytes(v1)).Kind, IngameBridgeProtocol.IncomingKind.Unknown);
+        }
+
+        private static void TellsAnOldPluginFromAnOldAddon() {
+            var fromV2 = IngameBridgeProtocol.ParseIncomingLine(Utf8Bytes("{\"v\":2,\"type\":\"error\",\"code\":\"version_unsupported\"}"));
+            Check("the error keeps the plugin's own v (2)", fromV2.Version, 2);
+            Check("version_unsupported at v2: update the plugin", IngameBridgeProtocol.VersionUnsupportedMessage(fromV2.Version), IngameBridgeProtocol.UpdatePluginMessage);
+            Check("the plugin message names Obsidian, not the module", IngameBridgeProtocol.UpdatePluginMessage.Contains("in Obsidian"), true);
+            var fromV3 = IngameBridgeProtocol.ParseIncomingLine(Utf8Bytes("{\"v\":3,\"type\":\"error\",\"code\":\"version_unsupported\"}"));
+            Check("version_unsupported at v3: update the module", IngameBridgeProtocol.VersionUnsupportedMessage(fromV3.Version), IngameBridgeProtocol.UpdateModuleMessage);
         }
 
         private static void RejectsADuplicateTopLevelKey() {

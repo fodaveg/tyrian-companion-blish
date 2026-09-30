@@ -67,7 +67,14 @@ pasted it anywhere but into memory for the next `hello`.
   listening yet is the expected state if Blish HUD starts before Obsidian does. An `auth_rejected`
   or `version_unsupported` error is the one case that does **not** retry until you change a setting
   (the token, most likely) — this module shows a notification once and waits. Without a usable
-  token it does not connect at all, and says so once.
+  token it does not connect at all, and says so once. `version_unsupported` says "update this
+  Blish HUD module" when the plugin's `v` is 3 or more, and "update Tyrian Companion in Obsidian"
+  when it is below 3 (a plugin that predates v3).
+- Protocol v3 (unreleased): right after showing an alert it sends the plugin
+  `{"v":3,"type":"alert_ack","nonce":…,"seq":…,"alertSeq":…}` on the same `seq` sequence as
+  `context`, `heartbeat` and `bye`, once per `(server, alertSeq)`. The `hello` goes out with
+  `"v":3`; the plugin's `welcome`, `alert` and `error` lines are read at v2 or v3. Not yet
+  compiled or run (see the commit that introduced it).
 - Paints the `content` string each alert line carries verbatim, through
   `ScreenNotification.ShowNotification`. It does not recompose the message from the other fields
   the wire line carries (`name`, `quantity`, `totalCopper`); `kind` only picks a notification color.

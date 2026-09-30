@@ -5,7 +5,7 @@ using System.Text;
 namespace TyrianCompanion.BlishBridge {
 
     /// <summary>
-    /// The wire contract of the in-game bridge, version 2, as this module's own client speaks it.
+    /// The wire contract of the in-game bridge, version 3 (v2 plus the addon's `alert_ack`), as this module's own client speaks it.
     /// Normative text: `docs/SPEC-puente-ingame.md` in the `tyrian-companion` repo; the plugin's
     /// executable copy of the same contract is `src/alerts/alert-ingame-protocol.ts`. Pure: no
     /// socket, no clock, no <c>SettingEntry</c>. The bridge used to be one-directional (v1: a
@@ -17,7 +17,10 @@ namespace TyrianCompanion.BlishBridge {
     /// </summary>
     internal static class IngameBridgeProtocol {
 
-        public const int Version = 2;
+        public const int Version = 3;
+
+        /// <summary>The oldest `v` this module still reads on the plugin's own lines (welcome, alert, error).</summary>
+        public const int MinServerVersion = 2;
 
         /// <summary>Hard cap on one frame, excluding its terminator, in either direction.</summary>
         public const int MaxLineBytes = 512;
@@ -40,6 +43,20 @@ namespace TyrianCompanion.BlishBridge {
         public static readonly int[] ReconnectBackoffDelaysMs = { 250, 500, 1_000, 2_000, 5_000 };
 
         public const string ClientName = "blish";
+
+        /// <summary>Shown when `version_unsupported` arrives with a `v` below 3: the plugin is the old side.</summary>
+        public const string UpdatePluginMessage = "Tyrian Companion: update Tyrian Companion in Obsidian.";
+
+        /// <summary>Shown when `version_unsupported` arrives with a `v` of 3 or more: this module is the old side.</summary>
+        public const string UpdateModuleMessage = "Tyrian Companion: update this Blish HUD module to talk to the plugin.";
+
+        /// <summary>
+        /// The message a `version_unsupported` stamped with the plugin's own <paramref name="pluginVersion"/>
+        /// calls for: a plugin that predates v3 answers the v3 `hello` with `"v":2`.
+        /// </summary>
+        public static string VersionUnsupportedMessage(int pluginVersion) {
+            return pluginVersion < Version ? UpdatePluginMessage : UpdateModuleMessage;
+        }
 
         private const string Base64UrlAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -87,6 +104,20 @@ namespace TyrianCompanion.BlishBridge {
             });
         }
 
+        /// <summary>
+        /// The confirmation that the plugin's alert number <paramref name="alertSeq"/> has just been
+        /// shown. Takes its place in the same `seq` sequence as context, heartbeat and bye.
+        /// </summary>
+        public static byte[] EncodeAlertAck(string nonce, long seq, long alertSeq) {
+            return EncodeLine(new[] {
+                new KeyValuePair<string, object>("v", (long)Version),
+                new KeyValuePair<string, object>("type", "alert_ack"),
+                new KeyValuePair<string, object>("nonce", nonce),
+                new KeyValuePair<string, object>("seq", seq),
+                new KeyValuePair<string, object>("alertSeq", alertSeq),
+            });
+        }
+
         public static byte[] EncodeBye(string nonce, long seq, string reason) {
             return EncodeLine(new[] {
                 new KeyValuePair<string, object>("v", (long)Version),
@@ -123,6 +154,8 @@ namespace TyrianCompanion.BlishBridge {
 
         public sealed class IncomingLine {
             public IncomingKind Kind;
+            /// <summary>The line's own `v` (2 or 3). Only meaningful for the kinds that were actually parsed; 0 otherwise.</summary>
+            public int Version;
             public string Server;
             public string Nonce;
             public int HeartbeatIntervalMs;
@@ -158,22 +191,22 @@ namespace TyrianCompanion.BlishBridge {
             if (!FlatJsonLine.TryParse(text, out var record)) return Unknown();
             if (!TryGetInteger(record, "v", out var version)) return Unknown();
             if (version > Version) return new IncomingLine { Kind = IncomingKind.ProtocolNewer };
-            if (version != Version) return Unknown();
+            if (version < MinServerVersion) return Unknown();
             if (!record.TryGetValue("type", out var typeValue) || !(typeValue is string type)) return Unknown();
 
             switch (type) {
                 case "welcome":
                     if (!HasExactKeys(record, WelcomeKeys)) return Unknown();
                     if (!(record["server"] is string server) || !(record["nonce"] is string nonce) || !TryGetInteger(record, "heartbeatIntervalMs", out var heartbeatIntervalMs)) return Unknown();
-                    return new IncomingLine { Kind = IncomingKind.Welcome, Server = server, Nonce = nonce, HeartbeatIntervalMs = (int)heartbeatIntervalMs };
+                    return new IncomingLine { Kind = IncomingKind.Welcome, Version = (int)version, Server = server, Nonce = nonce, HeartbeatIntervalMs = (int)heartbeatIntervalMs };
                 case "alert":
                     if (!HasExactKeys(record, AlertKeys)) return Unknown();
                     if (!TryGetInteger(record, "seq", out var seq) || !(record["kind"] is string kind) || !(record["content"] is string content)) return Unknown();
-                    return new IncomingLine { Kind = IncomingKind.Alert, AlertSeq = seq, AlertKind = kind, AlertContent = content };
+                    return new IncomingLine { Kind = IncomingKind.Alert, Version = (int)version, AlertSeq = seq, AlertKind = kind, AlertContent = content };
                 case "error":
                     if (!HasExactKeys(record, ErrorKeys)) return Unknown();
                     if (!(record["code"] is string code)) return Unknown();
-                    return new IncomingLine { Kind = IncomingKind.Error, ErrorCode = code };
+                    return new IncomingLine { Kind = IncomingKind.Error, Version = (int)version, ErrorCode = code };
                 default:
                     return Unknown();
             }
