@@ -6,7 +6,7 @@ using System.Text;
 namespace TyrianCompanion.BlishBridge {
 
     /// <summary>
-    /// Hand-rolled JSON for exactly what `docs/SPEC-puente-ingame.md` protocol v2 needs: one flat
+    /// Hand-rolled JSON for exactly what `docs/SPEC-puente-ingame.md` protocol v3 needs: one flat
     /// object per line, whose values are a string, an integer, or <c>null</c> — never nested
     /// objects or arrays, never a float. No NuGet dependency for this: every message the wire
     /// contract defines fits that shape, and the module already hand-rolled base64url and a

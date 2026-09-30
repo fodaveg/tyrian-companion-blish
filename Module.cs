@@ -16,7 +16,7 @@ namespace TyrianCompanion.BlishBridge {
     /// own view of the game (map, character, gameplay/loading/character-select) back to the
     /// plugin, so it can mark a play session without a click.
     ///
-    /// This is protocol v2 (`docs/SPEC-puente-ingame.md` in the `tyrian-companion` repo, the
+    /// This is protocol v3 (`docs/SPEC-puente-ingame.md` in the `tyrian-companion` repo, the
     /// signed spec this was built against): a bidirectional, authenticated loopback TCP
     /// connection — <see cref="IngameBridgeClient"/> owns the socket and the wire, this module
     /// owns settings and Blish HUD's own lifecycle/game-close events. It never calls the GW2 API,
@@ -40,7 +40,7 @@ namespace TyrianCompanion.BlishBridge {
         /// own logs; the plugin does not parse it beyond the character-class check every
         /// `clientVersion` gets. Bump this together with `manifest.json`'s `version` on a release.
         /// </summary>
-        private const string ClientVersion = "0.2.1";
+        private const string ClientVersion = "0.3.0";
 
         private SettingEntry<bool> _enabledSetting;
         private SettingEntry<int> _portSetting;

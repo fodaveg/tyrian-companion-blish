@@ -24,6 +24,12 @@ token's format, with a notification that says where to copy the right value; an 
 0.2.0 is cleared on load and never sent. Without a usable token the module does not connect and
 says so once. After a rejected token the notification says what to do.
 
+Version 0.3.0 speaks protocol v3: once an alert is queued for display it sends the plugin an
+`alert_ack` (the ack goes out when the notification is handed to the game's main thread, not
+when it is drawn), and the alert's trail in Tyrian Companion moves to "Recibido en el juego". It
+needs Tyrian Companion 0.2.12 or later; with an earlier plugin the module gets
+`version_unsupported` and asks you to update Tyrian Companion in Obsidian.
+
 ### Pasting the token
 
 1. In Obsidian, open the Tyrian Companion plugin's settings and find the "Token del addon" row.
@@ -70,11 +76,10 @@ pasted it anywhere but into memory for the next `hello`.
   token it does not connect at all, and says so once. `version_unsupported` says "update this
   Blish HUD module" when the plugin's `v` is 3 or more, and "update Tyrian Companion in Obsidian"
   when it is below 3 (a plugin that predates v3).
-- Protocol v3 (unreleased): right after showing an alert it sends the plugin
+- Protocol v3: right after queueing an alert for display it sends the plugin
   `{"v":3,"type":"alert_ack","nonce":…,"seq":…,"alertSeq":…}` on the same `seq` sequence as
   `context`, `heartbeat` and `bye`, once per `(server, alertSeq)`. The `hello` goes out with
-  `"v":3`; the plugin's `welcome`, `alert` and `error` lines are read at v2 or v3. Not yet
-  compiled or run (see the commit that introduced it).
+  `"v":3`; the plugin's `welcome`, `alert` and `error` lines are read at v2 or v3.
 - Paints the `content` string each alert line carries verbatim, through
   `ScreenNotification.ShowNotification`. It does not recompose the message from the other fields
   the wire line carries (`name`, `quantity`, `totalCopper`); `kind` only picks a notification color.
@@ -178,7 +183,7 @@ below for what that leaves unverified.
 
 Verified on this tree (compiled, protocol round-tripped by `tests/ProtocolConsoleTests`):
 
-- The v2 wire contract itself: `hello`/`context`/`heartbeat`/`bye` encode to the exact bytes the
+- The v3 wire contract itself: `hello`/`context`/`heartbeat`/`bye` encode to the exact bytes the
   spec's own example trace shows, and the decoder accepts a well-formed `welcome`/`alert`/`error`
   while tolerating an unknown `type`, a known `type` with an extra or missing key, and a newer `v`.
 - The token rules in `TokenGuard.cs` (above). Not verified: how Blish HUD's settings view applies

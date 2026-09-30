@@ -10,7 +10,7 @@ using Blish_HUD.Controls;
 namespace TyrianCompanion.BlishBridge {
 
     /// <summary>
-    /// The bidirectional, authenticated loopback TCP client for protocol v2
+    /// The bidirectional, authenticated loopback TCP client for protocol v3
     /// (`docs/SPEC-puente-ingame.md` in the `tyrian-companion` repo). Connects to the Tyrian
     /// Companion plugin, authenticates with a per-installation token, paints the plugin's `alert`
     /// lines, and reports this addon's own view of the game (map, character, gameplay/loading/
