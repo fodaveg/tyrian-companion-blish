@@ -65,7 +65,7 @@ pasted it anywhere but into memory for the next `hello`.
 - `alert`: painted through `ScreenNotification.ShowNotification`, deduplicated by `(server, seq)`
   so an Obsidian restart is never mistaken for "already shown" (the bug 0.1.0 had, described below).
 
-## Optional Halloween farming panel (0.4.0)
+## Optional Halloween farming panel (0.5.0)
 
 With Tyrian Companion 0.4.0 or later **already open in Obsidian or Hebra**, enable **Show Halloween
 farming panel** in this module's settings. The movable, read-only panel starts at 288 px wide;
@@ -86,10 +86,21 @@ slots, optional bag/duration goal and ETA, and partial preparation/Magic Find. A
 reading is labeled as such. Buffs are unverified. At close **net bags** remain a separate metric;
 opening or spending bags may make that signed number lower than observed increments.
 
+Automatic inventory observations require a **local Nexus addon** as producer, connected to the same
+Tyrian Companion host. Blish/Mumble report game presence but do not read inventory or currencies.
+The panel always states this requirement and shows no source reading when inventory evidence is
+absent. Host connection and reading freshness are separate: a fresh `farm1` frame cannot renew old
+inventory evidence. The unchanged `farm1` contract cannot identify a specific reader failure such
+as an unsupported build, nor distinguish old API host data from a Nexus observation; the panel
+keeps the source and scope unidentified instead of claiming that recent metrics came from Nexus.
+The host's timeline provides the detailed source reason and reading gaps.
+Observed increases and decreases have unknown cause. Currency coverage is not transported in
+`farm1`; no zero balance or currency gain is inferred. These labels do not certify live Windows QA.
+
 All frames remain flat JSON, at most 512 bytes, with fixed keys/enums and integer/null metrics.
 Snapshots expire after 15 seconds on a monotonic clock; disconnect invalidates freshness
 immediately. The last snapshot remains labeled stale, its duration freezes and its ETA disappears.
-Transport updates never renew the API age supplied by the plugin. The addon makes no GW2 API
+Transport updates never renew the observation age supplied by the plugin. The addon makes no GW2 API
 calls or extra inventory observations. Labels use Spanish for a Spanish host UI culture and
 English otherwise, native fonts, wrapped text and an opaque reading area.
 

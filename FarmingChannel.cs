@@ -65,7 +65,7 @@ namespace TyrianCompanion.BlishBridge {
         public bool Connected, Capable, Fresh;
         public double SecondsSinceFrame;
 
-        /// <summary>Reading ages grow between frames; the server still owns their original API age.</summary>
+        /// <summary>Reading ages grow between frames; the server still owns their original observation age.</summary>
         public int? ReadingAge(int? baseAge) {
             if (!baseAge.HasValue) return null;
             return (int)Math.Min(int.MaxValue, baseAge.Value + SecondsSinceFrame);

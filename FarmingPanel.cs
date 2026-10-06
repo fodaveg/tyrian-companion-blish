@@ -35,7 +35,7 @@ namespace TyrianCompanion.BlishBridge {
             // The native frame texture is decorative; the reading area stays opaque over any map.
             _chromeHeight = _window.Height - _window.ContentRegion.Height;
             _background = new Panel { Parent = _window, Size = new Point(264, 568), BackgroundColor = new Color(28, 25, 21) };
-            _rows = new Label[11];
+            _rows = new Label[13];
             for (var i = 0; i < _rows.Length; i++) {
                 _rows[i] = new Label {
                     Parent = _background, Width = 240, Location = new Point(12, 0),
@@ -57,7 +57,7 @@ namespace TyrianCompanion.BlishBridge {
                 if (visible) _window.Show(); else _window.Hide();
             }
             var t = FarmingPanelText.From(view, CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "es");
-            var rows = new[] { t.Phase, t.Observed, t.Elapsed, t.Rate, t.Age, t.Slots, t.Goal, t.Eta, t.Net, t.Preparation, t.Connection };
+            var rows = new[] { t.Phase, t.Observed, t.Elapsed, t.Rate, t.Age, t.Slots, t.Goal, t.Eta, t.Net, t.Source, t.Coverage, t.Preparation, t.Connection };
             var combined = string.Join("\n", rows);
             if (_previous == combined) return;
             _previous = combined;

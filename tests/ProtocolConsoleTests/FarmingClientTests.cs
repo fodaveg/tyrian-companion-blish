@@ -20,6 +20,8 @@ namespace TyrianCompanion.BlishBridge.Tests {
                 receive("{\"v\":3,\"type\":\"welcome\",\"server\":\"server\",\"nonce\":\"" + nonce + "\",\"heartbeatIntervalMs\":5000}");
                 Expect(queue.Count == 0 && !farming.Read().Capable, "legacy welcome leaves alert channel working and farming absent");
                 receive("{\"v\":3,\"type\":\"farming_cap\",\"nonce\":\"" + nonce + "\",\"tag\":\"farm1\"}");
+                receive("{\"v\":3,\"type\":\"live_cap\",\"nonce\":\"" + nonce + "\",\"tag\":\"live1\"}");
+                Expect(queue.Count == 0 && displayed == 0 && farming.Read().Snapshot == null, "live producer capability ignored by Blish without corrupting farm1 or alert state");
                 var pending = stateType.GetField("PendingFarmingSubscription");
                 Expect((bool)pending.GetValue(state), "capability queues subscription on real client");
                 pending.SetValue(state, false); // represent the normal sender having consumed it

@@ -55,7 +55,7 @@ namespace TyrianCompanion.BlishBridge.Tests {
             Expect(!channel.Receive(parsed.Farming), "duplicate snapshot ignored");
             now = 114.999;
             Expect(channel.Read().Fresh, "snapshot fresh before 15 seconds");
-            Expect(channel.Read().ReadingAge(parsed.Farming.Age) == 32, "API age grows from its supplied age");
+            Expect(channel.Read().ReadingAge(parsed.Farming.Age) == 32, "observation age grows from its supplied age");
             now = 115;
             Expect(!channel.Read().Fresh, "snapshot expires at exactly 15 seconds");
             var texts = FarmingPanelText.From(channel.Read(), false);
@@ -63,7 +63,7 @@ namespace TyrianCompanion.BlishBridge.Tests {
             Expect(texts.Rate.StartsWith("Last rate"), "stale rate labeled historical");
             var seq2 = Parse(State.Replace("\"seq\":1", "\"seq\":2")).Farming;
             Expect(channel.Receive(seq2), "higher snapshot sequence renews transport freshness");
-            Expect(channel.Read().ReadingAge(seq2.Age) == 18, "transport refresh uses supplied API age");
+            Expect(channel.Read().ReadingAge(seq2.Age) == 18, "transport refresh uses supplied observation age");
             channel.Disconnect();
             Expect(!channel.Read().Fresh && channel.Read().Snapshot != null, "disconnect immediately invalidates but preserves last reading");
             var secondNonce = "Ak3m1Qw9Lr0aT7yUc2Vb5g";
@@ -99,10 +99,24 @@ namespace TyrianCompanion.BlishBridge.Tests {
             final.Phase = "active";
             final.Error = null;
             final.Goal = "duration";
+            final.Age = 0;
             Expect(FarmingPanelText.From(new FarmingView { Snapshot = final, Fresh = true }, false).Eta.StartsWith("Remaining"), "duration goal uses countdown rather than approximate ETA");
             final.MagicFind = null;
             final.MagicFindKind = "unknown";
             Expect(FarmingPanelText.From(new FarmingView { Snapshot = final, Fresh = true }, false).Preparation.StartsWith("Magic Find · — · No reading"), "unknown Magic Find never labeled a partial known reading");
+            var live = Parse(State.Replace("\"age\":18", "\"age\":0")).Farming;
+            var liveView = new FarmingView { Snapshot = live, Connected = true, Capable = true, Fresh = true };
+            Expect(FarmingPanelText.From(liveView, false).Source.Contains("local Nexus required"), "Blish never claims to produce inventory");
+            Expect(FarmingPanelText.From(liveView, false).Source.Contains("Recent reading"), "recent inventory evidence is distinguished from transport");
+            liveView.SecondsSinceFrame = 4.999;
+            Expect(FarmingPanelText.From(liveView, false).Source.Contains("Recent reading"), "reading recent before five seconds");
+            liveView.SecondsSinceFrame = 5;
+            Expect(FarmingPanelText.From(liveView, false).Source.Contains("Stale reading"), "old evidence stays stale even with a fresh transport frame");
+            Expect(FarmingPanelText.From(liveView, false).Source.Contains("Source and scope not identified"), "legacy farm1 age never proves a Nexus source");
+            live.Age = null;
+            Expect(FarmingPanelText.From(liveView, true).Source.Contains("Fuente sin lectura"), "absence of reader stays explicit in Spanish");
+            Expect(FarmingPanelText.From(liveView, false).Coverage.Contains("Currencies not included"), "farm1 does not manufacture observed currencies");
+            Expect(FarmingPanelText.From(new FarmingView(), false).Source.Contains("Source has no reading"), "missing producer never becomes measured zero");
             Console.WriteLine("All farming checks passed.");
         }
 
