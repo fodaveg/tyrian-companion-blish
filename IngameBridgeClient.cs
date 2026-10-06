@@ -39,6 +39,7 @@ namespace TyrianCompanion.BlishBridge {
         private readonly Action<string, ScreenNotification.NotificationType> _onAlert;
         private readonly Logger _logger;
         private readonly string _clientVersion;
+        private readonly FarmingChannel _farming;
 
         /// <summary>Generated once per <see cref="IngameBridgeClient"/> (one per module load) and reused across every reconnect it makes, per the spec's `instance` field.</summary>
         private readonly string _instanceId;
@@ -73,13 +74,15 @@ namespace TyrianCompanion.BlishBridge {
             Func<string> tokenProvider,
             Action<string, ScreenNotification.NotificationType> onAlert,
             Logger logger,
-            string clientVersion) {
+            string clientVersion,
+            FarmingChannel farming) {
             _enabledProvider = enabledProvider;
             _portProvider = portProvider;
             _tokenProvider = tokenProvider;
             _onAlert = onAlert;
             _logger = logger;
             _clientVersion = clientVersion;
+            _farming = farming;
             _instanceId = IngameBridgeProtocol.CreateInstanceId(FillRandom);
         }
 
@@ -131,6 +134,7 @@ namespace TyrianCompanion.BlishBridge {
                         // AbortActiveConnection; this is a shutdown, not a failure.
                     } finally {
                         lock (_syncLock) { _activeClient = null; _activeConnection = null; }
+                        _farming.Disconnect();
                     }
 
                     if (token.IsCancellationRequested) break;
@@ -201,6 +205,7 @@ namespace TyrianCompanion.BlishBridge {
         }
 
         private void AbortActiveConnection() {
+            _farming.Disconnect();
             lock (_syncLock) {
                 try { _activeClient?.Close(); } catch (Exception) { /* best-effort teardown */ }
             }
@@ -273,6 +278,10 @@ namespace TyrianCompanion.BlishBridge {
                 }
 
                 if (connection.Authenticated) {
+                    if (connection.PendingFarmingSubscription) {
+                        await WriteSequencedLineAsync(stream, connection, seq => IngameBridgeProtocol.EncodeFarmingSubscription(connection.Nonce, seq), token).ConfigureAwait(false);
+                        connection.PendingFarmingSubscription = false;
+                    }
                     // The acks go first, in the order they were queued, so their `seq` stays in step
                     // with whatever context or heartbeat follows.
                     await SendPendingAlertAcksAsync(stream, connection, token).ConfigureAwait(false);
@@ -341,6 +350,7 @@ namespace TyrianCompanion.BlishBridge {
             var parsed = IngameBridgeProtocol.ParseIncomingLine(lineBytes.ToArray());
             switch (parsed.Kind) {
                 case IngameBridgeProtocol.IncomingKind.Welcome:
+                    if (connection.Authenticated) return; // do not reset sequence or freshness on a repeated welcome
                     if (parsed.Server != _lastSeenAlertServer) {
                         // A new plugin run (Obsidian restarted, or the port's first connection):
                         // its alert `seq` starts over, so the dedupe high-water mark must too.
@@ -352,8 +362,15 @@ namespace TyrianCompanion.BlishBridge {
                     connection.HeartbeatIntervalMs = parsed.HeartbeatIntervalMs > 0 ? parsed.HeartbeatIntervalMs : IngameBridgeProtocol.DefaultHeartbeatIntervalMs;
                     connection.LastSentAtUtc = DateTime.UtcNow;
                     connection.Authenticated = true;
+                    _farming.Welcome(parsed.Nonce);
                     _pauseReasonCode = null;
                     _pauseWarningShown = false;
+                    return;
+                case IngameBridgeProtocol.IncomingKind.FarmingCapability:
+                    if (connection.Authenticated && _farming.Capability(parsed.Nonce)) connection.PendingFarmingSubscription = true;
+                    return;
+                case IngameBridgeProtocol.IncomingKind.FarmingState:
+                    _farming.Receive(parsed.Farming); // no alert high-water mark, queue or acknowledgement
                     return;
                 case IngameBridgeProtocol.IncomingKind.Alert:
                     if (parsed.AlertSeq <= _lastSeenAlertSeq) return; // already shown, from this same plugin run
@@ -451,6 +468,7 @@ namespace TyrianCompanion.BlishBridge {
             public readonly SemaphoreSlim WriteGate = new SemaphoreSlim(1, 1);
 
             public bool Authenticated;
+            public bool PendingFarmingSubscription;
             public string Nonce;
             public string Server;
             public int HeartbeatIntervalMs = IngameBridgeProtocol.DefaultHeartbeatIntervalMs;

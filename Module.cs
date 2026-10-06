@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.Composition;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Blish_HUD;
@@ -40,11 +41,16 @@ namespace TyrianCompanion.BlishBridge {
         /// own logs; the plugin does not parse it beyond the character-class check every
         /// `clientVersion` gets. Bump this together with `manifest.json`'s `version` on a release.
         /// </summary>
-        private const string ClientVersion = "0.3.0";
+        private const string ClientVersion = "0.4.0";
 
         private SettingEntry<bool> _enabledSetting;
         private SettingEntry<int> _portSetting;
         private SettingEntry<string> _tokenSetting;
+        private SettingEntry<bool> _farmingVisibleSetting;
+        private SettingEntry<bool> _farmingResetSetting;
+        private SettingEntry<Point> _farmingPositionSetting;
+        private FarmingChannel _farming;
+        private FarmingPanel _farmingPanel;
 
         private IngameBridgeClient _client;
         private CancellationTokenSource _lifecycleCts;
@@ -79,6 +85,14 @@ namespace TyrianCompanion.BlishBridge {
                 () => "Plugin token",
                 () => "Paste the token from the plugin's settings in Obsidian (row \"Token del addon\", button \"Copiar token\"). Required: without a matching token the plugin rejects this module's connection. Not your Guild Wars 2 API key, which this module refuses. Never logged by this module.");
 
+            _farmingVisibleSetting = settings.DefineSetting("farmingPanelVisible", false,
+                () => "Show Halloween farming panel", () => "Optional read-only panel: observed bags, measured duration, rate, character slots and goal supplied by the plugin.");
+            _farmingResetSetting = settings.DefineSetting("farmingPanelReset", false,
+                () => "Reset Halloween panel position", () => "Move the panel back to its default position, then switch this setting off automatically.");
+
+            var panelState = settings.AddSubCollection("farmingPanelState", false, false);
+            _farmingPositionSetting = panelState.DefineSetting("position", new Point(40, 140), () => "", () => "");
+
             // First barrier: Blish HUD's own settings view refuses the value. `InvalidMessage` is
             // not displayed by Blish HUD 1.3.0 ("[NOT IMPLEMENTED]" in its docs), so the reason goes
             // out as a notification from here. `OnTokenChanged` is the second barrier, in case a
@@ -91,13 +105,15 @@ namespace TyrianCompanion.BlishBridge {
         }
 
         protected override Task LoadAsync() {
+            _farming = new FarmingChannel(() => (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency);
             _client = new IngameBridgeClient(
                 () => _enabledSetting.Value,
                 () => _portSetting.Value,
                 () => _tokenSetting.Value?.Trim(),
                 ShowAlert,
                 Logger,
-                ClientVersion);
+                ClientVersion,
+                _farming);
 
             // 0.2.0 kept a Guild Wars 2 API key pasted into the token field. Cleared before the
             // client starts and before `OnTokenChanged` is subscribed, so it is never sent and this
@@ -129,9 +145,17 @@ namespace TyrianCompanion.BlishBridge {
         }
 
         protected override void Update(GameTime gameTime) {
-            // NOOP: the client runs its own connect/read/send loop on a background thread and
-            // marshals every notification onto the main thread itself, through `ShowAlert` below.
-            // There is nothing left for this module to do once a frame.
+            if (_farming == null) return;
+            if (_farmingPanel == null && _farmingVisibleSetting.Value) {
+                _farmingPanel = new FarmingPanel(_farmingPositionSetting.Value, position => _farmingPositionSetting.Value = position,
+                    () => _farmingVisibleSetting.Value = false);
+            }
+            if (_farmingResetSetting.Value) {
+                _farmingPositionSetting.Value = new Point(40, 140);
+                _farmingPanel?.ResetPosition();
+                _farmingResetSetting.Value = false;
+            }
+            _farmingPanel?.Update(_farming.Read(), _farmingVisibleSetting.Value);
         }
 
         /// <inheritdoc />
@@ -153,6 +177,9 @@ namespace TyrianCompanion.BlishBridge {
             _lifecycleCts?.Dispose();
             _lifecycleCts = null;
             _client = null;
+            _farmingPanel?.Dispose();
+            _farmingPanel = null;
+            _farming = null;
         }
 
         private void OnSettingChanged(object sender, ValueChangedEventArgs<bool> e) => _client?.WakeUp();

@@ -1,6 +1,6 @@
 {
     "name": "Tyrian Companion Bridge",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "namespace": "fodaveg.tyriancompanion.blishbridge",
     "package": "TyrianCompanionBlishBridge.dll",
     "manifest_version": 1,

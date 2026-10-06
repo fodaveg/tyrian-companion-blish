@@ -65,6 +65,34 @@ pasted it anywhere but into memory for the next `hello`.
 - `alert`: painted through `ScreenNotification.ShowNotification`, deduplicated by `(server, seq)`
   so an Obsidian restart is never mistaken for "already shown" (the bug 0.1.0 had, described below).
 
+## Optional Halloween farming panel (0.4.0)
+
+With Tyrian Companion 0.4.0 or later **already open in Obsidian or Hebra**, enable **Show Halloween
+farming panel** in this module's settings. The movable, read-only panel starts at 288 px wide;
+its position is persisted with the module settings, including position resets. Native Dynamic HUD
+hides remain temporary and do not disable the visibility setting. Close it or switch the setting
+off to hide it, re-enable the setting to show it again, and use **Reset Halloween panel position** to bring it back.
+The panel has no start/stop control or keyboard shortcut: the host owns the session and goal.
+
+The optional `farm1` extension stays on protocol v3. After a normal `welcome`, a supporting plugin
+sends `farming_cap`; this addon sends one `farming_sub` using the same outbound sequence as
+context, heartbeat and alert acknowledgements. Older servers without that capability keep their
+alerts and game-context reporting; the panel labels its capability as unavailable. `farming_state`
+frames have a separate incoming sequence and never receive an alert acknowledgement.
+
+The panel shows measurement phase separately from connection status, **observed bags**, declared
+session duration, the server's bag/hour band (or a lower bound), each reading's age, character inventory
+slots, optional bag/duration goal and ETA, and partial preparation/Magic Find. A recent character
+reading is labeled as such. Buffs are unverified. At close **net bags** remain a separate metric;
+opening or spending bags may make that signed number lower than observed increments.
+
+All frames remain flat JSON, at most 512 bytes, with fixed keys/enums and integer/null metrics.
+Snapshots expire after 15 seconds on a monotonic clock; disconnect invalidates freshness
+immediately. The last snapshot remains labeled stale, its duration freezes and its ETA disappears.
+Transport updates never renew the API age supplied by the plugin. The addon makes no GW2 API
+calls or extra inventory observations. Labels use Spanish for a Spanish host UI culture and
+English otherwise, native fonts, wrapped text and an opaque reading area.
+
 ## What it does, and does not, do
 
 - Connects to the plugin over loopback TCP (`127.0.0.1`, port `47823` by default, configurable in
@@ -87,7 +115,8 @@ pasted it anywhere but into memory for the next `hello`.
 - Does **not** read Mumble Link beyond the map, character name and in-gameplay flag above, even
   though Blish HUD exposes far more of it (position, camera, combat state) to every module.
 - Does **not** automate any action inside the game.
-- Sends nothing to the plugin beyond `hello`, `context`, `heartbeat` and `bye`, ever.
+- Sends only the defined `hello`, `context`, `heartbeat`, `bye`, `alert_ack` and optional
+  `farming_sub` messages to the plugin.
 
 Those last four points are not a style choice: they are what keeps this module inside ArenaNet's
 "utility that helps players without affecting others" carve-out in its
@@ -112,9 +141,9 @@ The `.bhm` lands next to the compiled DLL in `bin/Release/` (the project sets
 ### Tests
 
 `tests/ProtocolConsoleTests/` is a small `net8.0` console project that links this repo's
-`FlatJsonLine.cs`, `IngameBridgeProtocol.cs` and `TokenGuard.cs` directly (`<Compile Include>`, no
-project reference) — those files have no dependency on Blish HUD or any NuGet package, on purpose, so the wire
-contract can be exercised without pulling in the game-engine dependencies (`MonoGame`, `Gw2Sharp`,
+wire codec, token guard, farming model/labels and TCP client directly (`<Compile Include>`, no
+project reference) — the runner substitutes only the Blish host logger/notification types and
+context sampler, so the wire contract can be exercised without pulling in the game-engine dependencies (`MonoGame`, `Gw2Sharp`,
 …) the module itself needs. It encodes one line of each addon-to-plugin message type and diffs it
 byte-for-byte against the example trace in `docs/SPEC-puente-ingame.md`, then round-trips a handful
 of plugin-to-addon lines (a well-formed `welcome`/`alert`/`error`, one with an extra key, one with a
@@ -126,7 +155,11 @@ too short or too long refused. Run it with:
 dotnet run --project tests/ProtocolConsoleTests
 ```
 
-It exits non-zero and prints the first mismatch on failure.
+It exits non-zero on failure. Farming coverage includes exact 512-byte frames, wrong enums,
+negative/overflowing metrics, null readings, nonce scopes, increasing sequence, capability
+idempotence and old-server behavior, monotonic TTL/disconnect, frozen duration and stale ETA,
+observed/net labels, and the real incoming client's independent farming/alert dispatch. The
+runner's host stubs do not validate rendered controls, game APIs or real TCP delivery.
 
 ## Installing
 
@@ -198,5 +231,7 @@ Verified on this tree (compiled, protocol round-tripped by `tests/ProtocolConsol
   describes, against a real client going through those screens.
 - That the module actually loads inside Blish HUD, connects to a running plugin, shows an alert, and
   sends `bye reason:"game_exit"` when the game process ends.
+- Halloween panel loading, native drag/close/reopen/reset, font/DPI/wrapping, live/stale labels
+  and end-to-end farming delivery inside the real Windows Blish HUD client.
 - A full session with a real player: this is `docs/SPEC-puente-ingame.md`'s own "prueba 14... sesión
   automática de un compañero de principio a fin y aviso visible", still pending QA on Windows.

@@ -20,6 +20,8 @@ namespace TyrianCompanion.BlishBridge.Tests {
         private static int _failures;
 
         private static int Main() {
+            FarmingTests.Run();
+            FarmingClientTests.Run();
             EncodesTheSpecExampleTrace();
             DecodesAWellFormedWelcome();
             DecodesAWellFormedAlert();

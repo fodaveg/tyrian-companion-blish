@@ -118,6 +118,17 @@ namespace TyrianCompanion.BlishBridge {
             });
         }
 
+        /// <summary>Optional farm1 subscription; consumes the same outbound sequence as context and alert_ack.</summary>
+        public static byte[] EncodeFarmingSubscription(string nonce, long seq) {
+            return EncodeLine(new[] {
+                new KeyValuePair<string, object>("v", (long)Version),
+                new KeyValuePair<string, object>("type", "farming_sub"),
+                new KeyValuePair<string, object>("nonce", nonce),
+                new KeyValuePair<string, object>("seq", seq),
+                new KeyValuePair<string, object>("tag", "farm1"),
+            });
+        }
+
         public static byte[] EncodeBye(string nonce, long seq, string reason) {
             return EncodeLine(new[] {
                 new KeyValuePair<string, object>("v", (long)Version),
@@ -150,7 +161,7 @@ namespace TyrianCompanion.BlishBridge {
         /// is the one case that is not silent: <c>"v"</c> greater than <see cref="Version"/> means
         /// "update this module".
         /// </summary>
-        public enum IncomingKind { Unknown, ProtocolNewer, Welcome, Alert, Error }
+        public enum IncomingKind { Unknown, ProtocolNewer, Welcome, Alert, Error, FarmingCapability, FarmingState }
 
         public sealed class IncomingLine {
             public IncomingKind Kind;
@@ -163,10 +174,12 @@ namespace TyrianCompanion.BlishBridge {
             public string AlertKind;
             public string AlertContent;
             public string ErrorCode;
+            public FarmingSnapshot Farming;
         }
 
         private static readonly string[] WelcomeKeys = { "v", "type", "server", "nonce", "heartbeatIntervalMs" };
         private static readonly string[] AlertKeys = { "v", "type", "seq", "kind", "name", "quantity", "totalCopper", "content" };
+        private static readonly string[] FarmingCapabilityKeys = { "v", "type", "nonce", "tag" };
         private static readonly string[] ErrorKeys = { "v", "type", "code" };
 
         /// <summary>
@@ -203,6 +216,13 @@ namespace TyrianCompanion.BlishBridge {
                     if (!HasExactKeys(record, AlertKeys)) return Unknown();
                     if (!TryGetInteger(record, "seq", out var seq) || !(record["kind"] is string kind) || !(record["content"] is string content)) return Unknown();
                     return new IncomingLine { Kind = IncomingKind.Alert, Version = (int)version, AlertSeq = seq, AlertKind = kind, AlertContent = content };
+                case "farming_cap":
+                    if (version != Version || !HasExactKeys(record, FarmingCapabilityKeys) ||
+                        !Equals(record["tag"], "farm1") || !(record["nonce"] is string farmNonce) || !FarmingSnapshot.ValidNonce(farmNonce)) return Unknown();
+                    return new IncomingLine { Kind = IncomingKind.FarmingCapability, Version = Version, Nonce = farmNonce };
+                case "farming_state":
+                    if (!FarmingSnapshot.TryParse(record, out var farming)) return Unknown();
+                    return new IncomingLine { Kind = IncomingKind.FarmingState, Version = Version, Farming = farming };
                 case "error":
                     if (!HasExactKeys(record, ErrorKeys)) return Unknown();
                     if (!(record["code"] is string code)) return Unknown();

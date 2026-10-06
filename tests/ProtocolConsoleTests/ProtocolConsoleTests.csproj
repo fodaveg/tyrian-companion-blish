@@ -1,12 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    net8.0, not net472: this project only exercises the wire contract and the token guard, and
-    `FlatJsonLine.cs` / `IngameBridgeProtocol.cs` / `TokenGuard.cs` have no dependency on Blish HUD or any NuGet package (by design —
-    see their own header comments), so there is nothing here that needs the module's own
-    net472/MonoGame/Gw2Sharp dependency graph. Linked, not project-referenced: a project reference
-    to `../../TyrianCompanionBlishBridge.csproj` would pull that whole graph back in through
-    `IngameBridgeClient.cs` and `Module.cs`, which this project has no reason to touch.
+    net8.0, not net472: exercises wire, token, farming freshness/labels and the real incoming
+    dispatcher. ClientStubs.cs substitutes the host logger, notification enum and context sampler;
+    the controls themselves still require the module's net472/MonoGame/Gw2Sharp graph and Windows QA.
+    Linked, not project-referenced: referencing the addon would restore all those dependencies.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -19,6 +17,10 @@
   <ItemGroup>
     <Compile Include="../../FlatJsonLine.cs" Link="FlatJsonLine.cs" />
     <Compile Include="../../IngameBridgeProtocol.cs" Link="IngameBridgeProtocol.cs" />
+    <Compile Include="../../IngameBridgeClient.cs" Link="IngameBridgeClient.cs" />
+    <Compile Include="../../FarmingSnapshot.cs" Link="FarmingSnapshot.cs" />
+    <Compile Include="../../FarmingPanelText.cs" Link="FarmingPanelText.cs" />
+    <Compile Include="../../FarmingChannel.cs" Link="FarmingChannel.cs" />
     <Compile Include="../../TokenGuard.cs" Link="TokenGuard.cs" />
   </ItemGroup>
 
