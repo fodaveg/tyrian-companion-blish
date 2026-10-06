@@ -39,7 +39,7 @@ namespace TyrianCompanion.BlishBridge {
                 (s.Goal == "duration" ? Duration(s.Progress) + " / " + Duration(s.Target) : Number(s.Progress) + " / " + Number(s.Target) + Pick(spanish, " bolsas", " bags"));
             text.Eta = text.Goal == "" ? "" : !view.Fresh ? UnavailableEta(s.Goal, spanish) :
                 s.Target > 0 && s.Progress >= s.Target ? Pick(spanish, "Objetivo alcanzado", "Goal reached") :
-                s.Phase != "active" || !readingFresh || s.Error != null || !s.Eta.HasValue ? UnavailableEta(s.Goal, spanish) : s.Goal == "duration" ?
+                s.Phase != "active" || !s.Eta.HasValue || (s.Goal == "bags" ? !readingFresh || s.Error != null : s.Error != null && s.Error != "observe") ? UnavailableEta(s.Goal, spanish) : s.Goal == "duration" ?
                 Pick(spanish, "Quedan ", "Remaining · ") + Duration(s.Eta) :
                 Pick(spanish, "Quedan aprox. ", "Approx. ") + Duration(s.Eta) + (spanish ? "" : " left");
             text.Net = s == null || (s.Phase != "complete" && s.Phase != "provisional" && s.Phase != "stopping") ? "" :

@@ -101,6 +101,21 @@ namespace TyrianCompanion.BlishBridge.Tests {
             final.Goal = "duration";
             final.Age = 0;
             Expect(FarmingPanelText.From(new FarmingView { Snapshot = final, Fresh = true }, false).Eta.StartsWith("Remaining"), "duration goal uses countdown rather than approximate ETA");
+            foreach (var readingAge in new int?[] { 5, null }) {
+                foreach (var readingError in new string[] { null, "observe" }) {
+                    final.Age = readingAge;
+                    final.Error = readingError;
+                    final.Goal = "duration";
+                    Expect(FarmingPanelText.From(new FarmingView { Snapshot = final, Fresh = true }, false).Eta.StartsWith("Remaining"), "duration countdown survives missing/stale inventory and observe errors");
+                    final.Goal = "bags";
+                    Expect(FarmingPanelText.From(new FarmingView { Snapshot = final, Fresh = true }, false).Eta == "ETA not available yet", "bags estimate requires fresh inventory evidence");
+                }
+            }
+            final.Goal = "duration";
+            final.Error = "save";
+            Expect(!FarmingPanelText.From(new FarmingView { Snapshot = final, Fresh = true }, false).Eta.StartsWith("Remaining"), "storage failure suppresses countdown");
+            final.Error = null;
+            final.Age = 0;
             final.MagicFind = null;
             final.MagicFindKind = "unknown";
             Expect(FarmingPanelText.From(new FarmingView { Snapshot = final, Fresh = true }, false).Preparation.StartsWith("Magic Find · — · No reading"), "unknown Magic Find never labeled a partial known reading");
